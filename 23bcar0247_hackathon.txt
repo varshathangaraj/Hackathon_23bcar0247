@@ -1,0 +1,159 @@
+import speech_recognition as sr
+import pyttsx3
+import openai
+import json
+from datetime import datetime
+
+openai.api_key = "your-openai-api-key-here"  
+engine = pyttsx3.init()
+
+transactions = {
+    "food": 0,
+    "entertainment": 0,
+    "transport": 0,
+    "groceries": 0
+}
+
+budget = {
+    "food": 1000,
+    "entertainment": 500,
+    "transport": 300,
+    "groceries": 2000
+}
+
+expense_history = []
+
+def speak(text):
+    engine.say(text)
+    engine.runAndWait()
+
+def listen():
+    recognizer = sr.Recognizer()
+    with sr.Microphone() as source:
+        print("Listening...")
+        audio = recognizer.listen(source)
+    
+    try:
+        command = recognizer.recognize_google(audio).lower()
+        print(f"Command recognized: {command}")
+        return command
+    except sr.UnknownValueError:
+        speak("Sorry, I didn't understand. Could you please repeat?")
+        return ""
+    except sr.RequestError:
+        speak("Sorry, there was an error with the speech service. Please try again later.")
+        return ""
+
+def customize_budget():
+    speak("Would you like to add a new category or modify an existing one? Say 'add' or 'modify'.")
+    command = listen()
+    
+    if "add" in command:
+        speak("What is the name of the new category?")
+        new_category = listen().lower()
+        if new_category not in transactions:
+            transactions[new_category] = 0
+            budget[new_category] = 0
+            speak(f"New category '{new_category}' added.")
+        else:
+            speak(f"Category '{new_category}' already exists.")
+        
+    elif "modify" in command:
+        speak("Which category would you like to modify? (food, entertainment, transport, groceries)")
+        category = listen().lower()
+        if category in transactions:
+            speak(f"How much budget would you like to set for {category}?")
+            try:
+                new_budget = float(listen())
+                budget[category] = new_budget
+                speak(f"Budget for {category} updated to {new_budget}.")
+            except ValueError:
+                speak("Sorry, please provide a valid number for the budget.")
+        else:
+            speak("Sorry, I don't recognize that category.")
+
+def track_expense(category, amount):
+    if category in transactions:
+        transactions[category] += amount
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        expense_history.append({"category": category, "amount": amount, "time": timestamp})
+        speak(f"Added {amount} to your {category} budget at {timestamp}.")
+        check_budget(category)
+
+def check_budget(category):
+    if transactions[category] > budget[category]:
+        speak(f"Warning: You've exceeded your {category} budget by {transactions[category] - budget[category]}.")
+
+def show_expenses():
+    speak("Here is the summary of your expenses so far.")
+    for category, total in transactions.items():
+        speak(f"{category.capitalize()}: {total}")
+
+def show_weekly_summary():
+    speak("Here is the weekly expense summary.")
+    weekly_expenses = {category: 0 for category in transactions}
+    
+    for entry in expense_history:
+        timestamp = datetime.strptime(entry['time'], "%Y-%m-%d %H:%M:%S")
+        if timestamp >= datetime.now() - datetime(weeks=1):
+            weekly_expenses[entry['category']] += entry['amount']
+    
+    for category, total in weekly_expenses.items():
+        speak(f"In the past week, you spent {total} on {category}.")
+
+def give_advice():
+    speak("Here's some financial advice for you.")
+    for category, total in transactions.items():
+        if total > budget[category]:
+            speak(f"You've overspent on {category}. Try to reduce your spending.")
+        else:
+            speak(f"You are within your {category} budget. Keep it up!")
+
+def get_ai_advice(command):
+    response = openai.Completion.create(
+        model="text-davinci-003",  
+        prompt=f"User command: {command}. Provide financial advice or relevant information.",
+        max_tokens=150
+    )
+    speak(response.choices[0].text.strip())
+
+def main():
+    speak("Hello! I am your voice controlled personal finance assistant. How can I help you?")
+    
+    while True:
+        command = listen()
+
+        if "track" in command and "spend" in command:
+            speak("What category are you spending on? (food, entertainment, transport, groceries)")
+            category = listen()
+            if category in transactions:
+                speak(f"How much did you spend on {category}?")
+                try:
+                    amount = float(listen())
+                    track_expense(category, amount)
+                except ValueError:
+                    speak("Please say a valid number.")
+            else:
+                speak("Sorry, I don't recognize that category. Please try again.")
+        
+        elif "show" in command and "expenses" in command:
+            show_expenses()
+
+        elif "weekly" in command and "summary" in command:
+            show_weekly_summary()
+
+        elif "give" in command and "advice" in command:
+            give_advice()
+
+        elif "customize" in command and "budget" in command:
+            customize_budget()
+
+        elif "ai advice" in command:
+            get_ai_advice(command)
+
+        elif "exit" in command or "stop" in command:
+            speak("Goodbye! Have a great day!")
+            break
+
+if __name__ == "__main__":
+    main()
